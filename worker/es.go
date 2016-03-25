@@ -1,8 +1,13 @@
 package worker
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/fizx/logs"
@@ -11,16 +16,20 @@ import (
 
 // ElasticSearchWorker bulk uploads to ElasticSearch
 type ElasticSearchWorker struct {
-	WorkChannel  chan map[string]interface{}
-	QuitChannel  chan bool
-	SendToStdOut bool
-	endpoint     string
-	counter      int
-	totalCounter int64
-	items        []string
-	startTime    time.Time
-	lastTime     time.Time
-	lastCount    int64
+	WorkChannel   chan map[string]interface{}
+	QuitChannel   chan bool
+	endpoint      string
+	counter       int
+	totalCounter  int64
+	items         []string
+	startTime     time.Time
+	lastTime      time.Time
+	lastCount     int64
+	index         string
+	docType       string
+	flushEvery    int64
+	mocking       bool
+	useDateSuffix bool
 }
 
 func ConfiguredElasticSearchHost() string {
@@ -38,6 +47,7 @@ func ConfiguredElasticSearchPort() int {
 	}
 	return 9200
 }
+
 func ConfiguredElasticSearchScheme() string {
 	key := "es.scheme"
 	if viper.IsSet(key) {
@@ -46,7 +56,7 @@ func ConfiguredElasticSearchScheme() string {
 	return "http"
 }
 
-func ConfiguredElasticSearchMaxItems() int {
+func ConfiguredElasticSearchMax() int {
 	key := "es.max"
 	if viper.IsSet(key) {
 		return viper.GetInt(key)
@@ -54,84 +64,153 @@ func ConfiguredElasticSearchMaxItems() int {
 	return 500
 }
 
-func (worker *ElasticSearchWorker) Init() (err error) {
-	worker.endpoint = fmt.Sprintf("%s://%s:%d/_bulk", ConfiguredElasticSearchScheme(), ConfiguredElasticSearchHost(), ConfiguredElasticSearchPort())
-	_, err = url.Parse(worker.endpoint)
+func ConfiguredElasticSearchIndex() string {
+	key := "es.index"
+	if viper.IsSet(key) {
+		return viper.GetString(key)
+	}
+	return "analytics"
+}
+
+func ConfiguredElasticSearchDocumentType() string {
+	key := "es.document_type"
+	if viper.IsSet(key) {
+		return viper.GetString(key)
+	}
+	return "event"
+}
+
+func ConfiguredElasticSearchFlushEvery() int64 {
+	key := "es.flush_every"
+	if viper.IsSet(key) {
+		return int64(viper.GetInt(key))
+	}
+	return int64(10000)
+}
+
+func ConfiguredElasticSearchMocking() bool {
+	key := "es.mocking"
+	if viper.IsSet(key) {
+		return viper.GetBool(key)
+	}
+	return false
+}
+
+func ConfiguredElasticSearchUseDateSuffix() bool {
+	key := "es.use_date_suffix"
+	if viper.IsSet(key) {
+		return viper.GetBool(key)
+	}
+	return false
+}
+
+func (w *ElasticSearchWorker) Init() (err error) {
+	w.endpoint = fmt.Sprintf("%s://%s:%d/_bulk", ConfiguredElasticSearchScheme(), ConfiguredElasticSearchHost(), ConfiguredElasticSearchPort())
+	_, err = url.Parse(w.endpoint)
 	if err != nil {
-		logs.Fatal("Invalid Elastic Search endpoint: %v", worker.endpoint)
-		err = fmt.Errorf("Invalid Elastic Search endpoint: %v", worker.endpoint)
+		logs.Fatal("Invalid Elastic Search endpoint: %v", w.endpoint)
+		err = fmt.Errorf("Invalid Elastic Search endpoint: %v", w.endpoint)
 		return
 	}
-	worker.counter = 0
-	worker.items = make([]string, ConfiguredElasticSearchMaxItems()*2) // need to make room for create commands
+	w.counter = 0
+	w.items = make([]string, ConfiguredElasticSearchMax()*2) // need to make room for create commands
+	w.index = ConfiguredElasticSearchIndex()
+	w.docType = ConfiguredElasticSearchDocumentType()
+	w.flushEvery = ConfiguredElasticSearchFlushEvery()
+	w.mocking = ConfiguredElasticSearchMocking()
+	w.useDateSuffix = ConfiguredElasticSearchUseDateSuffix()
 	return
 }
 
-/*
-// Start the work
-func (worker *ElasticSearchWorker) Start() {
-	logs.Debug("Worker is %v", worker)
-	logs.Debug("Worker config is %v:", worker.Config)
-	worker.counter = 0
-	worker.items = make([]string, worker.Config.Max*2) // need to make room for create commands
-	if worker.Config != nil {
-		worker.endpoint = fmt.Sprintf("http://%s:%d/_bulk", worker.Config.Host, worker.Config.Port)
-		_, err := url.Parse(worker.endpoint)
-		if err != nil {
-			logs.Fatal("Invalid Elastic Search endpoint: %v", worker.endpoint)
-		}
-		logs.Info("Set Elastic Search endpoint to %v", worker.endpoint)
-		go worker.Work()
-	} else {
-		logs.Fatal("No Elastic Search configuration given")
-	}
+func (w *ElasticSearchWorker) Endpoint() string {
+	return w.endpoint
+}
 
+func (w *ElasticSearchWorker) CurrentCount() int {
+	return w.counter
+}
+
+func (w *ElasticSearchWorker) CurrentItems() []string {
+	return w.items
+}
+
+func (w *ElasticSearchWorker) Index() string {
+	return w.index
+}
+
+func (w *ElasticSearchWorker) DocumentType() string {
+	return w.docType
+}
+
+func (w *ElasticSearchWorker) FlushEvery() int64 {
+	return w.flushEvery
+}
+
+func (w *ElasticSearchWorker) Mocking() bool {
+	return w.mocking
+}
+
+func (w *ElasticSearchWorker) UseDateSuffix() bool {
+	return w.useDateSuffix
+}
+
+func (w *ElasticSearchWorker) SetWorkChannel(channel chan map[string]interface{}) {
+	w.WorkChannel = channel
+}
+
+// Start the work
+func (w *ElasticSearchWorker) Start() {
+	go w.Work()
 }
 
 // Work the queue
-func (worker *ElasticSearchWorker) Work() {
-	worker.startTime = time.Now()
-	worker.lastTime = worker.startTime
-	logs.Info("ElasticSearchWorker starting work at %v", worker.startTime)
+func (w *ElasticSearchWorker) Work() {
+	w.startTime = time.Now()
+	w.lastTime = w.startTime
+	logs.Info("ElasticSearchWorker starting work at %v", w.startTime)
 	for {
 		select {
-		case obj := <-worker.WorkChannel:
-			logs.Debug("Worker received: %v; current count is %v", obj, worker.counter)
-			if worker.counter >= worker.Config.Max*2 {
-				worker.flush(false)
+		case obj := <-w.WorkChannel:
+			logs.Debug("w received: %v; current count is %v", obj, w.counter)
+			if w.counter >= ConfiguredElasticSearchMax()*2 || w.Mocking() {
+				w.flush(false)
 			}
 			line, err := json.Marshal(obj)
 			if err != nil {
 				logs.Info("Unable to marshal object %v", obj)
 				break
 			}
+			docType := w.DocumentType()
+			if w.UseDateSuffix() {
+				docType += "-" + time.Now().Format("2006.01.02")
+			}
 			createDoc := fmt.Sprintf(`{"create": { "_index": "%s", "_type": "%s"}}`,
-				worker.Config.Index, worker.Config.DocumentType)
-			worker.items[worker.counter] = createDoc
-			worker.items[worker.counter+1] = string(line)
-			worker.counter += 2
+				w.Index(), docType)
+			w.items[w.counter] = createDoc
+			w.items[w.counter+1] = string(line)
+			w.counter += 2
 
-		case <-worker.QuitChannel:
-			logs.Info("Worker received quit")
+		case <-w.QuitChannel:
+			logs.Info("w received quit")
 			return
 		}
 	}
 }
 
-// Stop stops the worker by send a message on its quit channel
-func (worker *ElasticSearchWorker) Stop() {
-	worker.QuitChannel <- true
-	worker.flush(true)
+// Stop stops the w by send a message on its quit channel
+func (w *ElasticSearchWorker) Stop() {
+	w.QuitChannel <- true
+	w.flush(true)
 }
 
-func (worker *ElasticSearchWorker) flush(forceReport bool) {
-	flushEvery := int64(worker.Config.InfoFlushEvery)
-	worker.totalCounter++
-	if worker.counter > 0 {
-		if !worker.SendToStdOut {
-			str := strings.Join(worker.items[0:worker.counter], "\n") + "\n"
+func (w *ElasticSearchWorker) flush(forceReport bool) {
+	flushEvery := w.FlushEvery()
+	w.totalCounter++
+	if w.counter > 0 {
+		if !w.Mocking() {
+			str := strings.Join(w.items[0:w.counter], "\n") + "\n"
 			bs := []byte(str)
-			req, _ := http.NewRequest("POST", worker.endpoint, bytes.NewBuffer(bs)) // endpoint has already been vetted
+			req, _ := http.NewRequest("POST", w.endpoint, bytes.NewBuffer(bs)) // endpoint has already been vetted
 			req.Header.Set("Content-Type", "application/json")
 			logs.Debug("--START BULK DATA--")
 			logs.Debug("%s", string(bs))
@@ -143,12 +222,12 @@ func (worker *ElasticSearchWorker) flush(forceReport bool) {
 				logs.Warn("POST failed: %s", err)
 			} else {
 				if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-					logs.Debug("POST succeeded on flush %v", worker.totalCounter)
+					logs.Debug("POST succeeded on flush %v", w.totalCounter)
 					logs.Debug("response Status: %v", resp.Status)
 					body, _ := ioutil.ReadAll(resp.Body)
 					logs.Debug("response Body: %v", string(body))
 				} else {
-					logs.Warn("On flush %v, Post failed with status: %v", worker.totalCounter, resp.StatusCode)
+					logs.Warn("On flush %v, Post failed with status: %v", w.totalCounter, resp.StatusCode)
 					logs.Warn("response Status: %v", resp.Status)
 					body, _ := ioutil.ReadAll(resp.Body)
 					logs.Warn("response Body: %v", string(body))
@@ -157,10 +236,10 @@ func (worker *ElasticSearchWorker) flush(forceReport bool) {
 			}
 			logs.Debug("Bulk upload is complete")
 		} else { // test mode: send to standout
-			str := strings.Join(worker.items[0:worker.counter], "\n") + "\n"
+			str := strings.Join(w.items[0:w.counter], "\n") + "\n"
 			fmt.Print(str)
 		}
-		itemCount := ((worker.totalCounter - 1) * int64(worker.Config.Max)) + int64(worker.counter/2)
+		itemCount := ((w.totalCounter - 1) * int64(ConfiguredElasticSearchMax())) + int64(w.counter/2)
 		if forceReport || (flushEvery > 0 && itemCount%flushEvery == 0) {
 			now := time.Now()
 			var report struct {
@@ -171,18 +250,16 @@ func (worker *ElasticSearchWorker) flush(forceReport bool) {
 				ItemsPerSecond     float64 `json:"items_per_second,omitempty"`
 			}
 			report.ItemCount = itemCount
-			report.TotalElapsedTime = float64(now.Sub(worker.startTime)) / float64(time.Second)
-			report.TimeSinceLastFlush = float64(now.Sub(worker.lastTime)) / float64(time.Second)
-			worker.lastTime = now
-			report.ItemsFlushed = itemCount - worker.lastCount
-			worker.lastCount = itemCount
+			report.TotalElapsedTime = float64(now.Sub(w.startTime)) / float64(time.Second)
+			report.TimeSinceLastFlush = float64(now.Sub(w.lastTime)) / float64(time.Second)
+			w.lastTime = now
+			report.ItemsFlushed = itemCount - w.lastCount
+			w.lastCount = itemCount
 			report.ItemsPerSecond = float64(report.ItemsFlushed) / report.TimeSinceLastFlush
 			strReport, _ := json.Marshal(report)
 			logs.Info("%v", string(strReport))
 		}
 		// now, clear out state
-		worker.items = make([]string, worker.Config.Max*2)
-		worker.counter = 0
+		_ = w.Init()
 	}
 }
-*/

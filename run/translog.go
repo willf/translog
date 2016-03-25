@@ -95,8 +95,8 @@ func Run(sink worker.Worker) {
 	if err == nil {
 		logs.SetLevel(level)
 	} else {
-		logs.SetLevel(logs.INFO)
-		logs.Warn("Invalid log level specification %s; setting to INFO", viper.GetString(configLogLevel))
+		logs.SetLevel(logs.DEBUG)
+		logs.Warn("Invalid log level specification %s; setting to DEBUG", viper.GetString(configLogLevel))
 	}
 	logs.Info("Starting translog")
 

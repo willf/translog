@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
+	"github.com/willf/translog/run"
+	"github.com/willf/translog/worker"
 )
 
 // elasticCmd represents the elastic command
@@ -12,8 +12,8 @@ var elasticCmd = &cobra.Command{
 	Short: "send log data to elasticsearch",
 	Long:  `Send log data to ElasticSearch`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Work your own magic here
-		fmt.Println("elastic called")
+		w := &worker.ElasticSearchWorker{}
+		run.Run(w)
 	},
 }
 

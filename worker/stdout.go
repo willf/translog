@@ -14,29 +14,29 @@ type StdOutWorker struct {
 	startTime   time.Time
 }
 
-func (worker *StdOutWorker) SetWorkChannel(channel chan map[string]interface{}) {
-	worker.WorkChannel = channel
+func (w *StdOutWorker) SetWorkChannel(channel chan map[string]interface{}) {
+	w.WorkChannel = channel
 }
 
 //
-func (worker *StdOutWorker) Init() (err error) {
-	worker.QuitChannel = make(chan bool)
+func (w *StdOutWorker) Init() (err error) {
+	w.QuitChannel = make(chan bool)
 	return
 }
 
 // Start the work
-func (worker *StdOutWorker) Start() {
-	logs.Debug("Worker is %v", worker)
-	go worker.Work()
+func (w *StdOutWorker) Start() {
+	logs.Debug("Worker is %v", w)
+	go w.Work()
 }
 
 // Work the queue
-func (worker *StdOutWorker) Work() {
-	worker.startTime = time.Now()
-	logs.Info("StdOutWorker starting work at %v", worker.startTime)
+func (w *StdOutWorker) Work() {
+	w.startTime = time.Now()
+	logs.Info("StdOutWorker starting work at %v", w.startTime)
 	for {
 		select {
-		case obj := <-worker.WorkChannel:
+		case obj := <-w.WorkChannel:
 			logs.Debug("Worker received: %v", obj)
 			line, err := json.Marshal(obj)
 			if err != nil {
@@ -45,7 +45,7 @@ func (worker *StdOutWorker) Work() {
 			}
 			fmt.Println(string(line))
 
-		case <-worker.QuitChannel:
+		case <-w.QuitChannel:
 			logs.Info("Worker received quit")
 			return
 		}
@@ -53,6 +53,6 @@ func (worker *StdOutWorker) Work() {
 }
 
 // Stop stops the worker by send a message on its quit channel
-func (worker *StdOutWorker) Stop() {
-	worker.QuitChannel <- true
+func (w *StdOutWorker) Stop() {
+	w.QuitChannel <- true
 }
