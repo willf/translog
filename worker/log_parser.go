@@ -26,22 +26,21 @@ import (
 	"github.com/spf13/viper"
 )
 
+const configParseInputFile = "parse.input_file"
 const configParseKeysToIgnore = "parse.keys_to_ignore"
-const configParseTimePatterns = "parse.time_patterns"
 const configParsePattern = "parse.pattern"
-const configTailReopen = "time.reopen"
-const configTail = "parse.time_patterns"
+const configParseTimePatterns = "parse.time_patterns"
+const configTailFromBeginning = "tail.from_beginning"
+const configTailReopen = "tail.reopen"
 
 // DefaultParseLogPattern is the default pattern for understanding log patterns
-const DefaultParseLogPattern = ""
+const DefaultParseLogPattern = `(?P<host>\S+) (?P<client>\S+) (?P<user>\S+) \[(?P<created>[^\]]+)\] "((?P<method>[A-Z]+) )?(?P<uri>\S+).*"`
 
 // LogParser parses the imput and puts events on a channel
 type LogParser struct {
-	Config    *viper.Viper
-	InputFile string
-	Channel   chan map[string]interface{}
-	tailer    *tail.Tail
-	regex     *regexp.Regexp
+	Channel chan map[string]interface{}
+	tailer  *tail.Tail
+	Regex   *regexp.Regexp
 }
 
 func newKeyName(k string, m map[string]interface{}) string {
@@ -63,12 +62,12 @@ func sliceContains(list []string, a string) bool {
 }
 
 func (worker *LogParser) shouldIgnore(key string) bool {
-	keysToIgnore := worker.Config.GetStringSlice(configParseKeysToIgnore)
+	keysToIgnore := viper.GetStringSlice(configParseKeysToIgnore)
 	return key == "" || sliceContains(keysToIgnore, key)
 }
 
-func parseString(ts string, config *viper.Viper) interface{} {
-	timePatterns := config.GetStringSlice(configParseTimePatterns)
+func ParseStringForValue(ts string) interface{} {
+	timePatterns := viper.GetStringSlice(configParseTimePatterns)
 	for _, timePattern := range timePatterns {
 		t, e := time.Parse(timePattern, ts)
 		if e == nil {
@@ -152,7 +151,7 @@ func (worker *LogParser) ParseURI(uri string, v map[string]interface{}) {
 			for k, kvs := range q {
 				newKey := newKeyName(k, v)
 				if !worker.shouldIgnore(newKey) && len(kvs) > 0 {
-					v[newKey] = parseString(kvs[0], worker.Config)
+					v[newKey] = ParseStringForValue(kvs[0])
 				}
 			}
 		}
@@ -163,13 +162,13 @@ func (worker *LogParser) ParseURI(uri string, v map[string]interface{}) {
 // add events to the map of strings -> anything. It returns that map
 func (worker *LogParser) ParseEvents(line string) (map[string]interface{}, error) {
 	v := make(map[string]interface{})
-	match := worker.regex.FindStringSubmatch(line)
-	names := worker.regex.SubexpNames()
+	match := worker.Regex.FindStringSubmatch(line)
+	names := worker.Regex.SubexpNames()
 	if match != nil {
 		for i, submatch := range match {
 			name := names[i]
 			if !worker.shouldIgnore(name) {
-				v[names[i]] = parseString(submatch, worker.Config)
+				v[names[i]] = ParseStringForValue(submatch)
 			}
 			if name == "uri" {
 				worker.ParseURI(submatch, v)
@@ -183,22 +182,23 @@ func (worker *LogParser) ParseEvents(line string) (map[string]interface{}, error
 
 // converts worker config into tail Config
 func (worker *LogParser) convertConfig() (config tail.Config) {
-	config = tail.Config{}
-	if !worker.Config.GetBool("tail.from_beginng") {
+	if !viper.GetBool(configTailFromBeginning) {
 		config.Location = &tail.SeekInfo{0, os.SEEK_END}
 	}
-	if worker.Config.IsSet("tail.reopen") {
-		config.ReOpen = worker.Config.GetBool(configTailReopen)
-	}
+	config.ReOpen = viper.GetBool(configTailReopen)
 	config.Follow = true
 	config.Logger = tail.DiscardingLogger
 	logs.Info("tail config: %v", config)
 	return
 }
 
-// Init initializes worker's regex
+func (worker *LogParser) SetWorkChannel(channel chan map[string]interface{}) {
+	worker.Channel = channel
+}
+
+// Init initializes worker's Regex
 func (worker *LogParser) Init() {
-	pattern := worker.Config.GetString(configParsePattern)
+	pattern := viper.GetString(configParsePattern)
 	if pattern == "" {
 		pattern = DefaultParseLogPattern
 	}
@@ -207,17 +207,18 @@ func (worker *LogParser) Init() {
 		logs.Warn("Could not compile Regex. Error: %v", err)
 		return
 	}
-	worker.regex = regex
+
+	worker.Regex = regex
 }
 
 // Start starts the LogWorker.
 // it starts tailing the log file, and parsing lines from it
 // putting parsed lines on the shared channel.
 func (worker *LogParser) Start() {
-	logs.Info("Starting worker process")
+	logs.Info("Starting LOG PARSING process")
 	worker.Init()
 
-	inputFile := worker.InputFile
+	inputFile := viper.GetString(configParseInputFile)
 	t, err := tail.TailFile(inputFile,
 		worker.convertConfig())
 	if err != nil {

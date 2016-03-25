@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
+	"github.com/willf/translog/run"
+	"github.com/willf/translog/worker"
 )
 
 // stdoutCmd represents the stdout command
@@ -13,7 +13,9 @@ var stdoutCmd = &cobra.Command{
 	Long:  `Send log data to stdout`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// TODO: Work your own magic here
-		fmt.Println("stdout called")
+		w := &worker.StdOutWorker{}
+		run.Run(w)
+		// go run(worker worker.Worker, config *viper.Viper)
 	},
 }
 

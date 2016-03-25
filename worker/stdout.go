@@ -1,4 +1,4 @@
-package Worker
+package worker
 
 import (
 	"encoding/json"
@@ -11,11 +11,17 @@ import (
 type StdOutWorker struct {
 	WorkChannel chan map[string]interface{}
 	QuitChannel chan bool
+	startTime   time.Time
 }
 
-// Init does nothing
-func (worker *StdOutWorker) Init() {
+func (worker *StdOutWorker) SetWorkChannel(channel chan map[string]interface{}) {
+	worker.WorkChannel = channel
+}
 
+//
+func (worker *StdOutWorker) Init() (err error) {
+	worker.QuitChannel = make(chan bool)
+	return
 }
 
 // Start the work
