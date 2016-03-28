@@ -171,7 +171,7 @@ func (w *ElasticSearchWorker) Work() {
 	for {
 		select {
 		case obj := <-w.WorkChannel:
-			logs.Debug("w received: %v; current count is %v", obj, w.counter)
+			logs.Debug("worker received: %v; current count is %v", obj, w.counter)
 			if w.counter >= ConfiguredElasticSearchMax()*2 || w.Mocking() {
 				w.flush(false)
 			}
@@ -182,7 +182,7 @@ func (w *ElasticSearchWorker) Work() {
 			}
 			docType := w.DocumentType()
 			if w.UseDateSuffix() {
-				docType += "-" + time.Now().Format("2006.01.02")
+				docType += time.Now().Format("2006.01.02")
 			}
 			createDoc := fmt.Sprintf(`{"create": { "_index": "%s", "_type": "%s"}}`,
 				w.Index(), docType)

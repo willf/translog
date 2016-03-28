@@ -46,7 +46,7 @@ file = "/var/translog.pid"   # where to store PID file
 overwrite = true             # should the PID file be overwritten if it already exists
 
 [logging]
-file = "/var/translog.pid"   # location of Log file (this is _Translog_'s log file)
+file = "/var/translog.log"   # location of Log file (this is _Translog_'s log file)
 level = "INFO"               # logging level (DEBUG/INFO/WARN/ERROR/FATAL)
 
 [parse]
