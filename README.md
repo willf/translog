@@ -74,4 +74,8 @@ flush_every = 10000          # how many documents to process before bulk uploadi
 index = "analytics"          # name of index
 document_type = "event"      # name of document type
 use_date_suffix = false      # add YYYY.MM.DD to end of document type
+
+# File processing
+[file]
+out = "output.jsonl"          # file name to write JSON objects to
 ```

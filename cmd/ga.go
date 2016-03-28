@@ -9,11 +9,11 @@ import (
 // gaCmd represents the ga command
 var gaCmd = &cobra.Command{
 	Use:   "ga",
-	Short: "send log data to Google Analytics",
-	Long:  `Send log data to Google Analytics`,
+	Short: "send log data to Google Analytics (tbd)",
+	Long:  `Send log data to Google Analytics (tbd)`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// TODO: Work your own magic here
-		fmt.Println("ga called")
+		fmt.Println("I lament to say that the GA module is not yet written")
 	},
 }
 

@@ -1,19 +1,19 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
+	"github.com/willf/translog/run"
+	"github.com/willf/translog/worker"
 )
 
 // fileCmd represents the file command
 var fileCmd = &cobra.Command{
 	Use:   "file",
 	Short: "send log data to a file",
-	Long:  `Send log data to another file.`,
+	Long:  `Send log data to another file in JSONL format`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Work your own magic here
-		fmt.Println("file called")
+		w := &worker.FileWorker{}
+		run.Run(w)
 	},
 }
 

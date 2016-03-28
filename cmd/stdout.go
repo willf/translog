@@ -12,10 +12,8 @@ var stdoutCmd = &cobra.Command{
 	Short: "send log data to stdout",
 	Long:  `Send log data to stdout`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// TODO: Work your own magic here
 		w := &worker.StdOutWorker{}
 		run.Run(w)
-		// go run(worker worker.Worker, config *viper.Viper)
 	},
 }
 
