@@ -16,9 +16,8 @@ import (
 )
 
 const configLogLevel = "logging.level"
-const configTranslogInputFile = "translog.input_file"
-const configTranslogOverWritePidFile = "translog.overwrite_pid_file"
-const configTranslogPidFile = "translog.pid_file"
+const configTranslogOverWritePidFile = "pid.overwrite"
+const configTranslogPidFile = "pid.file"
 const configRuntimeCpus = "runtime.cpus"
 const configLogFile = "logging.file"
 
