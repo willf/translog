@@ -19,7 +19,7 @@ func TestTesting(t *testing.T) {
 
 var logConfig = []byte(`
 [parse]
-    pattern = (?P<host>\S+) (?P<client>\S+) (?P<user>\S+) \[(?P<time>[^\]]+)\] "((?P<method>[A-Z]+) )?(?P<uri>\S+).*"
+pattern = '(?P<host>\S+) (?P<client>\S+) (?P<user>\S+) \[(?P<created>[^\]]+)\] "((?P<method>[A-Z]+) )?(?P<uri>\S+).*"'
   `)
 
 var URITestCases = []struct {
@@ -39,7 +39,7 @@ var URITestCases = []struct {
 }
 
 func TestParseURI(t *testing.T) {
-	// viper.SetConfigType("toml")
+	viper.SetConfigType("toml")
 	viper.ReadConfig(bytes.NewBuffer(logConfig))
 	uri := "/0/gif?info=7&friendly=giant&bool=false&float=5.4&string=testing&test=found&unused=100&count=8"
 	m := make(map[string]interface{})

@@ -45,6 +45,7 @@ func init() {
 // initConfig reads in config file and ENV variables if set.
 func initConfig() {
 	if cfgFile != "" { // enable ability to specify config file via flag
+		// fmt.Printf("Using configuration file: %v\n", cfgFile)
 		viper.SetConfigFile(cfgFile)
 	}
 

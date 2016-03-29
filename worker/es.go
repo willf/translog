@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fizx/logs"
@@ -18,7 +19,8 @@ import (
 type ElasticSearchWorker struct {
 	WorkChannel   chan map[string]interface{}
 	QuitChannel   chan bool
-	endpoint      string
+	robinIndex    int
+	robinLock     sync.Mutex
 	counter       int
 	totalCounter  int64
 	items         []string
@@ -32,12 +34,14 @@ type ElasticSearchWorker struct {
 	useDateSuffix bool
 }
 
-func ConfiguredElasticSearchHost() string {
-	key := "es.host"
+func ConfiguredElasticSearchHosts() []string {
+	key := "es.hosts"
 	if viper.IsSet(key) {
-		return viper.GetString(key)
+		return viper.GetStringSlice(key)
 	}
-	return "localhost"
+	hosts := make([]string, 1)
+	hosts[0] = "localhost"
+	return hosts
 }
 
 func ConfiguredElasticSearchPort() int {
@@ -105,14 +109,15 @@ func ConfiguredElasticSearchUseDateSuffix() bool {
 }
 
 func (w *ElasticSearchWorker) Init() (err error) {
-	w.endpoint = fmt.Sprintf("%s://%s:%d/_bulk", ConfiguredElasticSearchScheme(), ConfiguredElasticSearchHost(), ConfiguredElasticSearchPort())
-	_, err = url.Parse(w.endpoint)
+
+	_, err = url.Parse(w.Endpoint())
 	if err != nil {
-		logs.Fatal("Invalid Elastic Search endpoint: %v", w.endpoint)
-		err = fmt.Errorf("Invalid Elastic Search endpoint: %v", w.endpoint)
+		logs.Fatal("Invalid Elastic Search endpoint: %v", w.Endpoint())
+		err = fmt.Errorf("Invalid Elastic Search endpoint: %v", w.Endpoint())
 		return
 	}
 	w.counter = 0
+	w.robinIndex = 0
 	w.items = make([]string, ConfiguredElasticSearchMax()*2) // need to make room for create commands
 	w.index = ConfiguredElasticSearchIndex()
 	w.docType = ConfiguredElasticSearchDocumentType()
@@ -122,8 +127,19 @@ func (w *ElasticSearchWorker) Init() (err error) {
 	return
 }
 
+func (w *ElasticSearchWorker) NextHost() string {
+	hosts := ConfiguredElasticSearchHosts()
+	w.robinLock.Lock()
+	host := hosts[w.robinIndex]
+	w.robinIndex = (w.robinIndex + 1) % len(hosts)
+	w.robinLock.Unlock()
+	return host
+}
+
 func (w *ElasticSearchWorker) Endpoint() string {
-	return w.endpoint
+	host := w.NextHost()
+	endpoint := fmt.Sprintf("%s://%s:%d/_bulk", ConfiguredElasticSearchScheme(), host, ConfiguredElasticSearchPort())
+	return endpoint
 }
 
 func (w *ElasticSearchWorker) CurrentCount() int {
@@ -181,11 +197,12 @@ func (w *ElasticSearchWorker) Work() {
 				break
 			}
 			docType := w.DocumentType()
+			index := w.Index()
 			if w.UseDateSuffix() {
-				docType += time.Now().Format("2006.01.02")
+				index += time.Now().Format("2006.01.02")
 			}
 			createDoc := fmt.Sprintf(`{"create": { "_index": "%s", "_type": "%s"}}`,
-				w.Index(), docType)
+				index, docType)
 			w.items[w.counter] = createDoc
 			w.items[w.counter+1] = string(line)
 			w.counter += 2
@@ -210,7 +227,7 @@ func (w *ElasticSearchWorker) flush(forceReport bool) {
 		if !w.Mocking() {
 			str := strings.Join(w.items[0:w.counter], "\n") + "\n"
 			bs := []byte(str)
-			req, _ := http.NewRequest("POST", w.endpoint, bytes.NewBuffer(bs)) // endpoint has already been vetted
+			req, _ := http.NewRequest("POST", w.Endpoint(), bytes.NewBuffer(bs)) // endpoint has already been vetted
 			req.Header.Set("Content-Type", "application/json")
 			logs.Debug("--START BULK DATA--")
 			logs.Debug("%s", string(bs))

@@ -34,7 +34,7 @@ const configTailFromBeginning = "tail.from_beginning"
 const configTailReopen = "tail.reopen"
 
 // DefaultParseLogPattern is the default pattern for understanding log patterns
-const DefaultParseLogPattern = `(?P<host>\S+) (?P<client>\S+) (?P<user>\S+) \[(?P<created>[^\]]+)\] "((?P<method>[A-Z]+) )?(?P<uri>\S+).*"`
+const DefaultParseLogPattern = `(?P<line>.*)` // `(?P<host>\S+) (?P<client>\S+) (?P<user>\S+) \[(?P<created>[^\]]+)\] "((?P<method>[A-Z]+) )?(?P<uri>\S+).*"`
 
 // LogParser parses the imput and puts events on a channel
 type LogParser struct {

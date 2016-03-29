@@ -1,25 +1,29 @@
 package worker_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/spf13/viper"
 	"github.com/willf/translog/worker"
 )
 
-func TestConfiguredElasticSearchHostDefault(t *testing.T) {
+func TestConfiguredElasticSearchHosstDefault(t *testing.T) {
 	viper.Reset()
-	if worker.ConfiguredElasticSearchHost() != "localhost" {
-		t.Errorf("expected default ES host to be localhost, but was %v", worker.ConfiguredElasticSearchHost())
+	if worker.ConfiguredElasticSearchHosts()[0] != "localhost" {
+		t.Errorf("expected default ES host to be localhost, but was %v", worker.ConfiguredElasticSearchHosts())
 	}
 }
 
-func TestConfiguredElasticSearchHostDefined(t *testing.T) {
+func TestConfiguredElasticSearchHostsDefined(t *testing.T) {
 	viper.Reset()
 	host := "es-production.example.com"
-	viper.Set("es.host", host)
-	if worker.ConfiguredElasticSearchHost() != host {
-		t.Errorf("expected ES host to be %v, but was %v", host, worker.ConfiguredElasticSearchHost())
+	hosts := make([]string, 1)
+	hosts[0] = host
+	viper.Set("es.hosts", hosts)
+	fmt.Println(worker.ConfiguredElasticSearchHosts())
+	if worker.ConfiguredElasticSearchHosts()[0] != host {
+		t.Errorf("expected ES host to be %v, but was %v", host, worker.ConfiguredElasticSearchHosts())
 	}
 }
 
@@ -123,6 +127,56 @@ func TestConfiguredElasticSearchDocumentSuffixDefault(t *testing.T) {
 	viper.Reset()
 	if worker.ConfiguredElasticSearchUseDateSuffix() != false {
 		t.Errorf("expected default ES use_date_suffix to be false, but was %v", worker.ConfiguredElasticSearchUseDateSuffix())
+	}
+}
+
+func TestRoundRobin(t *testing.T) {
+	viper.Reset()
+	hosts := make([]string, 4)
+	hosts[0] = "alpha"
+	hosts[1] = "beta"
+	hosts[2] = "gamma"
+	hosts[3] = "delta"
+	viper.Set("es.hosts", hosts)
+	w := &worker.ElasticSearchWorker{}
+	w.Init()
+	host := w.NextHost()
+	if host != "alpha" {
+		t.Errorf("round robin on alpha 1 failed, got %v", host)
+	}
+	host = w.NextHost()
+	if host != "beta" {
+		t.Errorf("round robin on beta 1 failed, got %v", host)
+	}
+	host = w.NextHost()
+	if host != "gamma" {
+		t.Errorf("round robin on gamma 1 failed, got %v", host)
+	}
+	host = w.NextHost()
+	if host != "delta" {
+		t.Errorf("round robin on delta 1 failed, got %v", host)
+	}
+	host = w.NextHost()
+	if host != "alpha" {
+		t.Errorf("round robin on alpha 2 failed, got %v", host)
+	}
+}
+
+func TestRoundRobinDefault(t *testing.T) {
+	viper.Reset()
+	w := &worker.ElasticSearchWorker{}
+	w.Init()
+	host := w.NextHost()
+	if host != "localhost" {
+		t.Errorf("round robin on localhost 1 failed, got %v", host)
+	}
+	host = w.NextHost()
+	if host != "localhost" {
+		t.Errorf("round robin on localhost 2 failed, got %v", host)
+	}
+	host = w.NextHost()
+	if host != "localhost" {
+		t.Errorf("round robin on localhost 3 failed, got %v", host)
 	}
 }
 
