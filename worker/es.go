@@ -17,21 +17,16 @@ import (
 
 // ElasticSearchWorker bulk uploads to ElasticSearch
 type ElasticSearchWorker struct {
-	WorkChannel   chan map[string]interface{}
-	QuitChannel   chan bool
-	robinIndex    int
-	robinLock     sync.Mutex
-	counter       int
-	totalCounter  int64
-	items         []string
-	startTime     time.Time
-	lastTime      time.Time
-	lastCount     int64
-	index         string
-	docType       string
-	flushEvery    int64
-	mocking       bool
-	useDateSuffix bool
+	WorkChannel  chan map[string]interface{}
+	QuitChannel  chan bool
+	robinIndex   int
+	robinLock    sync.Mutex
+	counter      int
+	totalCounter int64
+	items        []string
+	startTime    time.Time
+	lastTime     time.Time
+	lastCount    int64
 }
 
 func ConfiguredElasticSearchHosts() []string {
@@ -109,7 +104,7 @@ func ConfiguredElasticSearchUseDateSuffix() bool {
 }
 
 func (w *ElasticSearchWorker) Init() (err error) {
-
+	w.QuitChannel = make(chan bool)
 	_, err = url.Parse(w.Endpoint())
 	if err != nil {
 		logs.Fatal("Invalid Elastic Search endpoint: %v", w.Endpoint())
@@ -119,11 +114,6 @@ func (w *ElasticSearchWorker) Init() (err error) {
 	w.counter = 0
 	w.robinIndex = 0
 	w.items = make([]string, ConfiguredElasticSearchMax()*2) // need to make room for create commands
-	w.index = ConfiguredElasticSearchIndex()
-	w.docType = ConfiguredElasticSearchDocumentType()
-	w.flushEvery = ConfiguredElasticSearchFlushEvery()
-	w.mocking = ConfiguredElasticSearchMocking()
-	w.useDateSuffix = ConfiguredElasticSearchUseDateSuffix()
 	return
 }
 
@@ -151,23 +141,23 @@ func (w *ElasticSearchWorker) CurrentItems() []string {
 }
 
 func (w *ElasticSearchWorker) Index() string {
-	return w.index
+	return ConfiguredElasticSearchIndex()
 }
 
 func (w *ElasticSearchWorker) DocumentType() string {
-	return w.docType
+	return ConfiguredElasticSearchDocumentType()
 }
 
 func (w *ElasticSearchWorker) FlushEvery() int64 {
-	return w.flushEvery
+	return ConfiguredElasticSearchFlushEvery()
 }
 
 func (w *ElasticSearchWorker) Mocking() bool {
-	return w.mocking
+	return ConfiguredElasticSearchMocking()
 }
 
 func (w *ElasticSearchWorker) UseDateSuffix() bool {
-	return w.useDateSuffix
+	return ConfiguredElasticSearchUseDateSuffix()
 }
 
 func (w *ElasticSearchWorker) SetWorkChannel(channel chan map[string]interface{}) {

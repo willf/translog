@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ActiveState/tail"
@@ -41,6 +42,8 @@ type LogParser struct {
 	Channel chan map[string]interface{}
 	tailer  *tail.Tail
 	Regex   *regexp.Regexp
+	pattern string
+	lock    sync.Mutex
 }
 
 func newKeyName(k string, m map[string]interface{}) string {
@@ -61,7 +64,7 @@ func sliceContains(list []string, a string) bool {
 	return false
 }
 
-func (worker *LogParser) shouldIgnore(key string) bool {
+func (w *LogParser) shouldIgnore(key string) bool {
 	keysToIgnore := viper.GetStringSlice(configParseKeysToIgnore)
 	return key == "" || sliceContains(keysToIgnore, key)
 }
@@ -143,14 +146,14 @@ func ParseStringForValue(ts string) interface{} {
 // it also attempts to determine the data type of the items by
 // parsing as date, int, bool, float, and if all of these fail, then keeping
 // as string
-func (worker *LogParser) ParseURI(uri string, v map[string]interface{}) {
+func (w *LogParser) ParseURI(uri string, v map[string]interface{}) {
 	if uri != "" {
 		url, err := url.Parse(uri)
 		if err == nil {
 			q := url.Query()
 			for k, kvs := range q {
 				newKey := newKeyName(k, v)
-				if !worker.shouldIgnore(newKey) && len(kvs) > 0 {
+				if !w.shouldIgnore(newKey) && len(kvs) > 0 {
 					v[newKey] = ParseStringForValue(kvs[0])
 				}
 			}
@@ -160,18 +163,19 @@ func (worker *LogParser) ParseURI(uri string, v map[string]interface{}) {
 
 // ParseEvents parses the line (including a call to ParseURI) to
 // add events to the map of strings -> anything. It returns that map
-func (worker *LogParser) ParseEvents(line string) (map[string]interface{}, error) {
+func (w *LogParser) ParseEvents(line string) (map[string]interface{}, error) {
 	v := make(map[string]interface{})
-	match := worker.Regex.FindStringSubmatch(line)
-	names := worker.Regex.SubexpNames()
+	regex := w.CachedRegex()
+	match := regex.FindStringSubmatch(line)
+	names := regex.SubexpNames()
 	if match != nil {
 		for i, submatch := range match {
 			name := names[i]
-			if !worker.shouldIgnore(name) {
+			if !w.shouldIgnore(name) {
 				v[names[i]] = ParseStringForValue(submatch)
 			}
 			if name == "uri" {
-				worker.ParseURI(submatch, v)
+				w.ParseURI(submatch, v)
 			}
 		}
 		return v, nil
@@ -180,8 +184,8 @@ func (worker *LogParser) ParseEvents(line string) (map[string]interface{}, error
 	return nil, fmt.Errorf("Line %s did not match pattern.", line)
 }
 
-// converts worker config into tail Config
-func (worker *LogParser) convertConfig() (config tail.Config) {
+// converts w config into tail Config
+func (w *LogParser) convertConfig() (config tail.Config) {
 	if !viper.GetBool(configTailFromBeginning) {
 		config.Location = &tail.SeekInfo{0, os.SEEK_END}
 	}
@@ -192,47 +196,59 @@ func (worker *LogParser) convertConfig() (config tail.Config) {
 	return
 }
 
-func (worker *LogParser) SetWorkChannel(channel chan map[string]interface{}) {
-	worker.Channel = channel
+func (w *LogParser) SetWorkChannel(channel chan map[string]interface{}) {
+	w.Channel = channel
+}
+
+// recompile regex if necessaary ...
+
+func (w *LogParser) CachedRegex() *regexp.Regexp {
+	w.lock.Lock()
+	pattern := viper.GetString(configParsePattern)
+	if pattern != w.pattern {
+		if pattern == "" {
+			pattern = DefaultParseLogPattern
+		}
+		regex, err := regexp.Compile(pattern)
+		if err != nil {
+			logs.Warn("Could not compile Regex. Error: %v", err)
+		} else {
+			logs.Debug("Resetting regex: %v", pattern)
+			w.pattern = pattern
+			w.Regex = regex
+		}
+	}
+	w.lock.Unlock()
+	return w.Regex
 }
 
 // Init initializes worker's Regex
-func (worker *LogParser) Init() {
-	pattern := viper.GetString(configParsePattern)
-	if pattern == "" {
-		pattern = DefaultParseLogPattern
-	}
-	regex, err := regexp.Compile(pattern)
-	if err != nil {
-		logs.Warn("Could not compile Regex. Error: %v", err)
-		return
-	}
-
-	worker.Regex = regex
+func (w *LogParser) Init() {
+	w.CachedRegex()
 }
 
 // Start starts the LogWorker.
 // it starts tailing the log file, and parsing lines from it
 // putting parsed lines on the shared channel.
-func (worker *LogParser) Start() {
+func (w *LogParser) Start() {
 	logs.Info("Starting LOG PARSING process")
-	worker.Init()
+	w.Init()
 
 	inputFile := viper.GetString(configParseInputFile)
 	t, err := tail.TailFile(inputFile,
-		worker.convertConfig())
+		w.convertConfig())
 	if err != nil {
 		logs.Warn("Input file could not be opened: %s; error: %s", inputFile, err)
 
 	} else {
-		worker.tailer = t
+		w.tailer = t
 		for line := range t.Lines {
 			s := strings.TrimSpace(line.Text)
 			logs.Debug("Processing line %v", s)
-			v, err := worker.ParseEvents(s)
+			v, err := w.ParseEvents(s)
 			if err == nil {
 				go func() {
-					worker.Channel <- v
+					w.Channel <- v
 				}()
 			}
 		}
@@ -241,9 +257,12 @@ func (worker *LogParser) Start() {
 }
 
 // Stop stops the worker and cleans up. Does *not* stop ElasticSearchWorker
-func (worker *LogParser) Stop() {
-	if worker.tailer != nil {
-		worker.tailer.Stop()
-		worker.tailer.Cleanup()
+func (w *LogParser) Stop() {
+	if w.tailer != nil {
+		//logs.Debug("Stopping tailer")
+		//err := w.tailer.Stop()
+		logs.Debug("Cleaning up tailer")
+		w.tailer.Cleanup()
+		logs.Debug("Done stopping tailer")
 	}
 }

@@ -135,7 +135,9 @@ func Run(sink worker.Worker) {
 		} else {
 			logs.Warn("PID file %s did not exist.", pidFileName)
 		}
+		logs.Info("Stopping Log Worker")
 		logWorker.Stop()
+		logs.Info("Stopping sink worker")
 		sink.Stop()
 		logs.Info("Exiting logs2es")
 		finished <- true
