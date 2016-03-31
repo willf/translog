@@ -139,7 +139,7 @@ func Run(sink worker.Worker) {
 		logWorker.Stop()
 		logs.Info("Stopping sink worker")
 		sink.Stop()
-		logs.Info("Exiting logs2es")
+		logs.Info("Exiting translog")
 		finished <- true
 	}()
 
