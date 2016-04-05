@@ -15,7 +15,9 @@ var elasticCmd = &cobra.Command{
 		n_workers := ConfiguredRuntimeWorkers()
 		sinks := make([]worker.Worker, n_workers)
 		for i := 0; i < n_workers; i++ {
-			sinks[i] = &worker.ElasticSearchWorker{}
+			w := &worker.ElasticSearchWorker{}
+			w.WorkerNumber = i
+			sinks[i] = w
 		}
 		run.Run(sinks)
 	},

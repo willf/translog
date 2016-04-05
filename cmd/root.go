@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 	"os"
-	"runtime/pprof"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -38,16 +36,6 @@ ElasticSearch, Google Analytics, files, or STDOUT.
 // Execute adds all child commands to the root command sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	cpuprofile = "" // /tmp/cpu.prof"
-	if cpuprofile != "" {
-		fmt.Printf("Creating CPU profile at %v\n", cpuprofile)
-		f, err := os.Create(cpuprofile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	}
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(-1)

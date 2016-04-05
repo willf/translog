@@ -21,6 +21,7 @@ import (
 type ElasticSearchWorker struct {
 	WorkChannel  chan map[string]interface{}
 	QuitChannel  chan bool
+	WorkerNumber int
 	robinIndex   int
 	robinLock    sync.Mutex
 	counter      int
@@ -41,78 +42,67 @@ type ElasticSearchWorker struct {
 	useSuffix    bool
 }
 
-func ConfiguredElasticSearchHosts() []string {
-	key := "es.hosts"
-	if viper.IsSet(key) {
-		return viper.GetStringSlice(key)
-	}
+const (
+	key_es_hosts           = "es.hosts"
+	key_es_port            = "es.port"
+	key_es_scheme          = "es.scheme"
+	key_es_max             = "es.max"
+	key_es_index           = "es.index"
+	key_es_document_type   = "es.document_type"
+	key_es_report_every    = "es.report_every"
+	key_es_mocking         = "es.mocking"
+	key_es_use_date_suffix = "es.use_date_suffix"
+)
+
+func EsSetDefaults() {
+	host := "localhost"
 	hosts := make([]string, 1)
-	hosts[0] = "localhost"
-	return hosts
+	hosts[0] = host
+	viper.SetDefault(key_es_hosts, hosts)
+	viper.SetDefault(key_es_port, 9200)
+	viper.SetDefault(key_es_scheme, "http")
+	viper.SetDefault(key_es_max, 500)
+	viper.SetDefault(key_es_index, "analytics")
+	viper.SetDefault(key_es_document_type, "event")
+	viper.SetDefault(key_es_report_every, 10000)
+	viper.SetDefault(key_es_mocking, false)
+	viper.SetDefault(key_es_use_date_suffix, false)
+}
+
+func ConfiguredElasticSearchHosts() []string {
+	return viper.GetStringSlice(key_es_hosts)
 }
 
 func ConfiguredElasticSearchPort() int {
-	key := "es.port"
-	if viper.IsSet(key) {
-		return viper.GetInt(key)
-	}
-	return 9200
+	return viper.GetInt(key_es_port)
 }
 
 func ConfiguredElasticSearchScheme() string {
-	key := "es.scheme"
-	if viper.IsSet(key) {
-		return viper.GetString(key)
-	}
-	return "http"
+	return viper.GetString(key_es_scheme)
 }
 
 func ConfiguredElasticSearchMax() int {
-	key := "es.max"
-	if viper.IsSet(key) {
-		return viper.GetInt(key)
-	}
-	return 500
+	return viper.GetInt(key_es_max)
 }
 
 func ConfiguredElasticSearchIndex() string {
-	key := "es.index"
-	if viper.IsSet(key) {
-		return viper.GetString(key)
-	}
-	return "analytics"
+	return viper.GetString(key_es_index)
 }
 
 func ConfiguredElasticSearchDocumentType() string {
-	key := "es.document_type"
-	if viper.IsSet(key) {
-		return viper.GetString(key)
-	}
-	return "event"
+	return viper.GetString(key_es_document_type)
 }
 
 func ConfiguredElasticSearchReportEvery() int64 {
-	key := "es.report_every"
-	if viper.IsSet(key) {
-		return int64(viper.GetInt(key))
-	}
-	return int64(10000)
+	return int64(viper.GetInt(key_es_report_every))
 }
 
 func ConfiguredElasticSearchMocking() bool {
-	key := "es.mocking"
-	if viper.IsSet(key) {
-		return viper.GetBool(key)
-	}
-	return false
+	return viper.GetBool(key_es_mocking)
 }
 
 func ConfiguredElasticSearchUseDateSuffix() bool {
-	key := "es.use_date_suffix"
-	if viper.IsSet(key) {
-		return viper.GetBool(key)
-	}
-	return false
+	return viper.GetBool(key_es_use_date_suffix)
 }
 
 func (w *ElasticSearchWorker) Init() (err error) {
@@ -120,6 +110,7 @@ func (w *ElasticSearchWorker) Init() (err error) {
 
 	w.counter = 0
 	w.robinIndex = 0
+	EsSetDefaults()
 	w.max = ConfiguredElasticSearchMax()
 	w.hosts = ConfiguredElasticSearchHosts()
 	w.scheme = ConfiguredElasticSearchScheme()
@@ -271,29 +262,24 @@ func (w *ElasticSearchWorker) flush(forceReport bool) {
 					logs.Warn("Creating request resulted in an error: %v", err)
 				}
 				req.Header.Set("Content-Type", "application/json")
-				logs.Debug("--START BULK DATA--")
-				logs.Debug("%s", string(bs))
-				logs.Debug("--END BULK DATA--")
 
 				client := &http.Client{}
 				resp, err := client.Do(req)
 
 				if err != nil {
-					logs.Warn("POST failed: %s", err)
+					logs.Warn("Worker #%v POST failed: %s", w.WorkerNumber, err)
 				} else {
 					if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-						logs.Info("POST succeeded with status %v on flush %v", resp.Status, w.totalCounter)
-						body, _ = ioutil.ReadAll(resp.Body)
-						logs.Debug("response Body: %v", string(body))
+						logs.Info("Worker #%v: POST succeeded with status %v on flush %v", resp.Status, w.totalCounter)
 					} else {
-						logs.Warn("On flush %v, Post failed with status: %v", w.totalCounter, resp.StatusCode)
-						logs.Warn("response Status: %v", resp.Status)
+						logs.Warn("Worker #%v: On flush %v, Post failed with status: %v", w.WorkerNumber, w.totalCounter, resp.StatusCode)
+						logs.Warn("rWorker #%v: esponse Status: %v", w.WorkerNumber, resp.Status)
 						body, _ := ioutil.ReadAll(resp.Body)
-						logs.Warn("response Body: %v", string(body))
+						logs.Warn("Worker #%v: response Body: %v", w.WorkerNumber, string(body))
 					}
 					defer resp.Body.Close()
 				}
-				logs.Debug("Bulk upload is complete")
+				logs.Debug("Worker #%v: Bulk upload is complete", w.WorkerNumber)
 			}()
 		} else { // test mode: send to standout
 			str := strings.Join(w.items[0:w.counter], "\n") + "\n"
@@ -304,6 +290,7 @@ func (w *ElasticSearchWorker) flush(forceReport bool) {
 			go func() {
 				now := time.Now()
 				var report struct {
+					WorkerNumber       int     `json:"worker_number,omitempty"`
 					ItemCount          int64   `json:"item_count,omitempty"`
 					TotalElapsedTime   float64 `json:"total_elapsed_time,omitempty"`
 					TimeSinceLastFlush float64 `json:"time_since_last_flush,omitempty"`
@@ -311,6 +298,7 @@ func (w *ElasticSearchWorker) flush(forceReport bool) {
 					ItemsPerSecond     float64 `json:"items_per_second,omitempty"`
 					LastItemCreated    string  `json:"last_item_created,omitempty"`
 				}
+				report.WorkerNumber = w.WorkerNumber
 				report.ItemCount = itemCount
 				report.TotalElapsedTime = float64(now.Sub(w.startTime)) / float64(time.Second)
 				report.TimeSinceLastFlush = float64(now.Sub(w.lastTime)) / float64(time.Second)
