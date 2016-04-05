@@ -186,11 +186,11 @@ func (w *ElasticSearchWorker) Start() {
 func (w *ElasticSearchWorker) Work() {
 	w.startTime = time.Now()
 	w.lastTime = w.startTime
-	logs.Info("ElasticSearchWorker starting work at %v", w.startTime)
+	logs.Info("ElasticSearchWorker #%v starting work at %v", w.WorkerNumber, w.startTime)
 	for {
 		select {
 		case obj := <-w.WorkChannel:
-			logs.Debug("worker received: %v; current count is %v", obj, w.counter)
+			logs.Debug("Worker #%v: received: %v; current count is %v", w.WorkerNumber, obj, w.counter)
 			if w.counter >= w.max*2 || w.Mocking() {
 				w.flush(false)
 			}
@@ -211,7 +211,7 @@ func (w *ElasticSearchWorker) Work() {
 			w.counter += 2
 
 		case <-w.QuitChannel:
-			logs.Info("Elasticsearch worker received quit")
+			logs.Info("Elasticsearch worker #%v received quit", w.WorkerNumber)
 			return
 		}
 	}
@@ -270,7 +270,7 @@ func (w *ElasticSearchWorker) flush(forceReport bool) {
 					logs.Warn("Worker #%v POST failed: %s", w.WorkerNumber, err)
 				} else {
 					if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
-						logs.Info("Worker #%v: POST succeeded with status %v on flush %v", resp.Status, w.totalCounter)
+						logs.Info("Worker #%v: POST succeeded with status %v on flush %v", w.WorkerNumber, resp.Status, w.totalCounter)
 					} else {
 						logs.Warn("Worker #%v: On flush %v, Post failed with status: %v", w.WorkerNumber, w.totalCounter, resp.StatusCode)
 						logs.Warn("rWorker #%v: esponse Status: %v", w.WorkerNumber, resp.Status)
