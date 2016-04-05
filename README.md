@@ -1,4 +1,6 @@
 # translog
+
+[![Join the chat at https://gitter.im/willf/translog](https://badges.gitter.im/willf/translog.svg)](https://gitter.im/willf/translog?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 A log file tailer that sends structured data to various backends
 
 ## Basic introduction
