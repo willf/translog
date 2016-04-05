@@ -2,13 +2,25 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"runtime/pprof"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var cfgFile string
+var cpuprofile string
+
+const configRuntimeWorkers = "runtime.workers"
+
+func ConfiguredRuntimeWorkers() int {
+	if viper.IsSet(configRuntimeWorkers) {
+		return viper.GetInt(configRuntimeWorkers)
+	}
+	return 1
+}
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
@@ -26,6 +38,16 @@ ElasticSearch, Google Analytics, files, or STDOUT.
 // Execute adds all child commands to the root command sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	cpuprofile = "" // /tmp/cpu.prof"
+	if cpuprofile != "" {
+		fmt.Printf("Creating CPU profile at %v\n", cpuprofile)
+		f, err := os.Create(cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(-1)
@@ -40,6 +62,7 @@ func init() {
 	// will be global for your application.
 
 	RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.translog.yaml)")
+
 }
 
 // initConfig reads in config file and ENV variables if set.

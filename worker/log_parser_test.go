@@ -95,6 +95,8 @@ func TestParseEvents(t *testing.T) {
 }
 
 func TestParseTimeStrings(t *testing.T) {
+	w := &worker.LogParser{}
+	w.Init()
 	expected := time.Unix(int64(1311638400), 0).UTC()
 	inputs := []string{
 		"26/Jul/2011:00:00:00 +0000",
@@ -109,7 +111,7 @@ func TestParseTimeStrings(t *testing.T) {
 		"2011-07-26T00:00:00Z",
 		"2011-07-26T00:00:00.0Z"}
 	for i, input := range inputs {
-		actual := worker.ParseStringForValue(input).(time.Time)
+		actual := w.ParseStringForValue(input).(time.Time)
 		if !actual.Equal(expected) {
 			t.Errorf("Parse time string failure, test %v: expected: %v, actual: %v", i+1, actual, expected)
 		}
@@ -122,6 +124,8 @@ type IntFormatTest struct {
 }
 
 func TestParseIntStrings(t *testing.T) {
+	w := &worker.LogParser{}
+	w.Init()
 	var formatTests = []IntFormatTest{
 		{"0", 0},
 		{"1", 1},
@@ -131,7 +135,8 @@ func TestParseIntStrings(t *testing.T) {
 		{"-12123", -12123},
 	}
 	for i, test := range formatTests {
-		actual := worker.ParseStringForValue(test.input)
+
+		actual := w.ParseStringForValue(test.input)
 		if actual != test.expected {
 			t.Errorf("test parse int failure: %v expected %v got %v from %v", i+1, test.expected, actual, test.input)
 		}
@@ -153,6 +158,8 @@ func floatEquals(a, b float64) bool {
 }
 
 func TestParseDoubleStrings(t *testing.T) {
+	w := &worker.LogParser{}
+	w.Init()
 	var formatTests = []DoubleFormatTest{
 		{"0.0", 0.0},
 		{"1.0", 1.0},
@@ -164,7 +171,7 @@ func TestParseDoubleStrings(t *testing.T) {
 		{"1.618033988749894848204586834365638", math.Phi},
 	}
 	for i, test := range formatTests {
-		actual := worker.ParseStringForValue(test.input)
+		actual := w.ParseStringForValue(test.input)
 		if !floatEquals(actual.(float64), test.expected) {
 			t.Errorf("test parse float failure: %v expected %f [type: %v] got %f [type: %v] from %v",
 				i+1, test.expected, reflect.TypeOf(test.expected), actual, reflect.TypeOf(actual), test.input)
@@ -178,6 +185,8 @@ type BoolFormatTest struct {
 }
 
 func TestParseBool(t *testing.T) {
+	w := &worker.LogParser{}
+	w.Init()
 	var formatTests = []BoolFormatTest{
 		{"true", true},
 		{"false", false},
@@ -187,7 +196,7 @@ func TestParseBool(t *testing.T) {
 		{"False", false},
 	}
 	for i, test := range formatTests {
-		actual := worker.ParseStringForValue(test.input)
+		actual := w.ParseStringForValue(test.input)
 		if actual != test.expected {
 			t.Errorf("test parse bool failure: %v expected %v got %v from %v", i+1, test.expected, actual, test.input)
 		}

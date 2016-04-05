@@ -130,7 +130,19 @@ func TestConfiguredElasticSearchDocumentSuffixDefault(t *testing.T) {
 	}
 }
 
-func TestRoundRobin(t *testing.T) {
+func isValidHost(host string) bool {
+	switch host {
+	case
+		"alpha",
+		"beta",
+		"gamma",
+		"delta":
+		return true
+	}
+	return false
+}
+
+func TestNextHostMany(t *testing.T) {
 	viper.Reset()
 	hosts := make([]string, 4)
 	hosts[0] = "alpha"
@@ -140,43 +152,23 @@ func TestRoundRobin(t *testing.T) {
 	viper.Set("es.hosts", hosts)
 	w := &worker.ElasticSearchWorker{}
 	w.Init()
-	host := w.NextHost()
-	if host != "alpha" {
-		t.Errorf("round robin on alpha 1 failed, got %v", host)
-	}
-	host = w.NextHost()
-	if host != "beta" {
-		t.Errorf("round robin on beta 1 failed, got %v", host)
-	}
-	host = w.NextHost()
-	if host != "gamma" {
-		t.Errorf("round robin on gamma 1 failed, got %v", host)
-	}
-	host = w.NextHost()
-	if host != "delta" {
-		t.Errorf("round robin on delta 1 failed, got %v", host)
-	}
-	host = w.NextHost()
-	if host != "alpha" {
-		t.Errorf("round robin on alpha 2 failed, got %v", host)
+	for i := 0; i < 100; i++ {
+		host := w.NextHost()
+		if !isValidHost(host) {
+			t.Errorf("next host on  %i failed, got %v", i, host)
+		}
 	}
 }
 
-func TestRoundRobinDefault(t *testing.T) {
+func TestNextHostDefault(t *testing.T) {
 	viper.Reset()
 	w := &worker.ElasticSearchWorker{}
 	w.Init()
-	host := w.NextHost()
-	if host != "localhost" {
-		t.Errorf("round robin on localhost 1 failed, got %v", host)
-	}
-	host = w.NextHost()
-	if host != "localhost" {
-		t.Errorf("round robin on localhost 2 failed, got %v", host)
-	}
-	host = w.NextHost()
-	if host != "localhost" {
-		t.Errorf("round robin on localhost 3 failed, got %v", host)
+	for i := 0; i < 100; i++ {
+		host := w.NextHost()
+		if host != "localhost" {
+			t.Errorf("next host on  %i failed, got %v", i, host)
+		}
 	}
 }
 
@@ -202,8 +194,8 @@ func TestInit(t *testing.T) {
 		if w.DocumentType() != "event" {
 			t.Errorf("expected %v, got %v", "event", w.DocumentType())
 		}
-		if w.FlushEvery() != 10000 {
-			t.Errorf("expected %v, got %v", 10000, w.FlushEvery())
+		if w.ReportEvery() != 10000 {
+			t.Errorf("expected %v, got %v", 10000, w.ReportEvery())
 		}
 		if w.Mocking() != false {
 			t.Errorf("expected %v, got %v", false, w.Mocking())

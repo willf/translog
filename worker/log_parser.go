@@ -19,7 +19,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ActiveState/tail"
@@ -39,11 +38,12 @@ const DefaultParseLogPattern = `(?P<line>.*)` // `(?P<host>\S+) (?P<client>\S+) 
 
 // LogParser parses the imput and puts events on a channel
 type LogParser struct {
-	Channel chan map[string]interface{}
-	tailer  *tail.Tail
-	Regex   *regexp.Regexp
-	pattern string
-	lock    sync.Mutex
+	Channel      chan map[string]interface{}
+	TimePatterns []string
+	tailer       *tail.Tail
+	Regex        *regexp.Regexp
+	pattern      string
+	keysToIgnore map[string]bool
 }
 
 func newKeyName(k string, m map[string]interface{}) string {
@@ -65,61 +65,68 @@ func sliceContains(list []string, a string) bool {
 }
 
 func (w *LogParser) shouldIgnore(key string) bool {
-	keysToIgnore := viper.GetStringSlice(configParseKeysToIgnore)
-	return key == "" || sliceContains(keysToIgnore, key)
+	return key == "" || w.keysToIgnore[key]
 }
 
-func ParseStringForValue(ts string) interface{} {
-	timePatterns := viper.GetStringSlice(configParseTimePatterns)
-	for _, timePattern := range timePatterns {
-		t, e := time.Parse(timePattern, ts)
-		if e == nil {
-			return t
+func (w *LogParser) ParseTime(ts string) (t time.Time, err error) {
+	for _, timePattern := range w.TimePatterns {
+		t, err = time.Parse(timePattern, ts)
+		if err == nil {
+			return
 		}
 	}
 	nginxFormat := "02/Jan/2006:15:04:05 -0700"
-	t, e := time.Parse(nginxFormat, ts)
-	if e == nil {
-		return t
+	t, err = time.Parse(nginxFormat, ts)
+	if err == nil {
+		return
 	}
-	t, e = time.Parse(time.ANSIC, ts)
-	if e == nil {
-		return t
+	t, err = time.Parse(time.ANSIC, ts)
+	if err == nil {
+		return
 	}
-	t, e = time.Parse(time.UnixDate, ts)
-	if e == nil {
-		return t
+	t, err = time.Parse(time.UnixDate, ts)
+	if err == nil {
+		return
 	}
-	t, e = time.Parse(time.RubyDate, ts)
-	if e == nil {
-		return t
+	t, err = time.Parse(time.RubyDate, ts)
+	if err == nil {
+		return
 	}
-	t, e = time.Parse(time.RFC822, ts)
-	if e == nil {
-		return t
+	t, err = time.Parse(time.RFC822, ts)
+	if err == nil {
+		return
 	}
-	t, e = time.Parse(time.RFC822Z, ts)
-	if e == nil {
-		return t
+	t, err = time.Parse(time.RFC822Z, ts)
+	if err == nil {
+		return
 	}
-	t, e = time.Parse(time.RFC850, ts)
-	if e == nil {
-		return t
+	t, err = time.Parse(time.RFC850, ts)
+	if err == nil {
+		return
 	}
-	t, e = time.Parse(time.RFC1123, ts)
-	if e == nil {
-		return t
+	t, err = time.Parse(time.RFC1123, ts)
+	if err == nil {
+		return
 	}
-	t, e = time.Parse(time.RFC1123Z, ts)
-	if e == nil {
-		return t
+	t, err = time.Parse(time.RFC1123Z, ts)
+	if err == nil {
+		return
 	}
-	t, e = time.Parse(time.RFC3339, ts)
-	if e == nil {
-		return t
+	t, err = time.Parse(time.RFC3339, ts)
+	if err == nil {
+		return
 	}
-	t, e = time.Parse(time.RFC3339Nano, ts)
-	if e == nil {
+	t, err = time.Parse(time.RFC3339Nano, ts)
+	if err == nil {
+		return
+	}
+	return
+}
+
+func (w *LogParser) ParseStringForValue(ts string) interface{} {
+
+	t, err := w.ParseTime(ts)
+	if err == nil {
 		return t
 	}
 	pi, err := strconv.ParseInt(ts, 10, 64)
@@ -154,7 +161,7 @@ func (w *LogParser) ParseURI(uri string, v map[string]interface{}) {
 			for k, kvs := range q {
 				newKey := newKeyName(k, v)
 				if !w.shouldIgnore(newKey) && len(kvs) > 0 {
-					v[newKey] = ParseStringForValue(kvs[0])
+					v[newKey] = w.ParseStringForValue(kvs[0])
 				}
 			}
 		}
@@ -165,14 +172,14 @@ func (w *LogParser) ParseURI(uri string, v map[string]interface{}) {
 // add events to the map of strings -> anything. It returns that map
 func (w *LogParser) ParseEvents(line string) (map[string]interface{}, error) {
 	v := make(map[string]interface{})
-	regex := w.CachedRegex()
+	regex := w.Regex
 	match := regex.FindStringSubmatch(line)
 	names := regex.SubexpNames()
 	if match != nil {
 		for i, submatch := range match {
 			name := names[i]
 			if !w.shouldIgnore(name) {
-				v[names[i]] = ParseStringForValue(submatch)
+				v[names[i]] = w.ParseStringForValue(submatch)
 			}
 			if name == "uri" {
 				w.ParseURI(submatch, v)
@@ -202,29 +209,28 @@ func (w *LogParser) SetWorkChannel(channel chan map[string]interface{}) {
 
 // recompile regex if necessaary ...
 
-func (w *LogParser) CachedRegex() *regexp.Regexp {
-	w.lock.Lock()
+func (w *LogParser) ConfigureRegex() {
 	pattern := viper.GetString(configParsePattern)
-	if pattern != w.pattern {
-		if pattern == "" {
-			pattern = DefaultParseLogPattern
-		}
-		regex, err := regexp.Compile(pattern)
-		if err != nil {
-			logs.Warn("Could not compile Regex. Error: %v", err)
-		} else {
-			logs.Debug("Resetting regex: %v", pattern)
-			w.pattern = pattern
-			w.Regex = regex
-		}
+	if pattern == "" {
+		pattern = DefaultParseLogPattern
 	}
-	w.lock.Unlock()
-	return w.Regex
+	regex, err := regexp.Compile(pattern)
+	if err != nil {
+		logs.Warn("Could not compile Regex. Error: %v", err)
+	} else {
+		w.pattern = pattern
+		w.Regex = regex
+	}
 }
 
 // Init initializes worker's Regex
 func (w *LogParser) Init() {
-	w.CachedRegex()
+	w.TimePatterns = viper.GetStringSlice(configParseTimePatterns)
+	w.ConfigureRegex()
+	w.keysToIgnore = map[string]bool{}
+	for _, key := range viper.GetStringSlice(configParseKeysToIgnore) {
+		w.keysToIgnore[key] = true
+	}
 }
 
 // Start starts the LogWorker.
@@ -235,8 +241,7 @@ func (w *LogParser) Start() {
 	w.Init()
 
 	inputFile := viper.GetString(configParseInputFile)
-	t, err := tail.TailFile(inputFile,
-		w.convertConfig())
+	t, err := tail.TailFile(inputFile, w.convertConfig())
 	if err != nil {
 		logs.Warn("Input file could not be opened: %s; error: %s", inputFile, err)
 

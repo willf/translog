@@ -12,8 +12,12 @@ var stdoutCmd = &cobra.Command{
 	Short: "send log data to stdout",
 	Long:  `Send log data to stdout`,
 	Run: func(cmd *cobra.Command, args []string) {
-		w := &worker.StdOutWorker{}
-		run.Run(w)
+		n_workers := 1 // ignore configuration!
+		sinks := make([]worker.Worker, n_workers)
+		for i := 0; i < n_workers; i++ {
+			sinks[i] = &worker.StdOutWorker{}
+		}
+		run.Run(sinks)
 	},
 }
 

@@ -12,8 +12,12 @@ var elasticCmd = &cobra.Command{
 	Short: "send log data to elasticsearch",
 	Long:  `Send log data to ElasticSearch`,
 	Run: func(cmd *cobra.Command, args []string) {
-		w := &worker.ElasticSearchWorker{}
-		run.Run(w)
+		n_workers := ConfiguredRuntimeWorkers()
+		sinks := make([]worker.Worker, n_workers)
+		for i := 0; i < n_workers; i++ {
+			sinks[i] = &worker.ElasticSearchWorker{}
+		}
+		run.Run(sinks)
 	},
 }
 

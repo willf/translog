@@ -79,7 +79,7 @@ func createPidFile(pidFileName string) (pidFile *os.File, err error) {
 	return
 }
 
-func Run(sink worker.Worker) {
+func Run(sinks []worker.Worker) {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 	if viper.IsSet(configLogFile) {
 		logFile := viper.GetString(configLogFile)
@@ -113,11 +113,13 @@ func Run(sink worker.Worker) {
 	logWorker.SetWorkChannel(work)
 	logWorker.Init()
 
-	sink.SetWorkChannel(work)
-	sink.Init()
+	for _, sink := range sinks {
+		sink.SetWorkChannel(work)
+		sink.Init()
+		go sink.Start()
+	}
 
 	go logWorker.Start()
-	go sink.Start()
 
 	sigs := make(chan os.Signal, 1)
 	finished := make(chan bool, 0)
@@ -137,8 +139,10 @@ func Run(sink worker.Worker) {
 		}
 		logs.Info("Stopping Log Worker")
 		logWorker.Stop()
-		logs.Info("Stopping sink worker")
-		sink.Stop()
+		logs.Info("Stopping sink workers")
+		for _, sink := range sinks {
+			sink.Stop()
+		}
 		logs.Info("Exiting translog")
 		finished <- true
 	}()

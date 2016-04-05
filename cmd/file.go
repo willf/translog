@@ -12,8 +12,12 @@ var fileCmd = &cobra.Command{
 	Short: "send log data to a file",
 	Long:  `Send log data to another file in JSONL format`,
 	Run: func(cmd *cobra.Command, args []string) {
-		w := &worker.FileWorker{}
-		run.Run(w)
+		n_workers := 1 // ignore configuration!
+		sinks := make([]worker.Worker, n_workers)
+		for i := 0; i < n_workers; i++ {
+			sinks[i] = &worker.FileWorker{}
+		}
+		run.Run(sinks)
 	},
 }
 
