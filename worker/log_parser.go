@@ -199,7 +199,7 @@ func (w *LogParser) convertConfig() (config tail.Config) {
 	config.ReOpen = viper.GetBool(configTailReopen)
 	config.Follow = true
 	config.Logger = tail.DiscardingLogger
-	logs.Info("tail config: %v", config)
+	config.Poll = true
 	return
 }
 
@@ -239,9 +239,12 @@ func (w *LogParser) Init() {
 func (w *LogParser) Start() {
 	logs.Info("Starting LOG PARSING process")
 	w.Init()
-
 	inputFile := viper.GetString(configParseInputFile)
-	t, err := tail.TailFile(inputFile, w.convertConfig())
+	tcfg := w.convertConfig()
+	// tcfg := tail.Config{Follow: true, ReOpen: true, Logger: tail.DiscardingLogger, Poll: true}
+	logs.Info("tail config: ReOpen? %v; MustExist? %v; Follow? %v; Poll? %v; Pipe? %v",
+		tcfg.ReOpen, tcfg.MustExist, tcfg.Follow, tcfg.Poll, tcfg.Pipe)
+	t, err := tail.TailFile(inputFile, tcfg)
 	if err != nil {
 		logs.Warn("Input file could not be opened: %s; error: %s", inputFile, err)
 
